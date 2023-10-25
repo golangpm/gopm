@@ -4,11 +4,11 @@ use clap::{App, Arg, SubCommand};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::{
-    io,
     env,
     fs::{self, File},
+    io,
+    io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
-    io::{BufReader, Write, Read, BufRead},
 };
 
 extern crate serde_json;
@@ -22,11 +22,12 @@ struct Config {
 }
 
 // CONSTS
-const VERSION: &str = "0.0.2";
+const VERSION: &str = "0.0.3";
+const AUTHOR: &str = "ITDOBRO";
 
 static WINDOWS_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let mut path = dirs::home_dir().unwrap_or_else(|| {
-        println!("Failed to get the home directory");
+        println!("❌ Failed to get the home directory");
         std::process::exit(1);
     });
     path.push("gopm/config/gopm-config.json");
@@ -35,7 +36,7 @@ static WINDOWS_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
 
 static MACOS_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let mut path = dirs::home_dir().unwrap_or_else(|| {
-        println!("Failed to get the home directory");
+        println!("❌ Failed to get the home directory");
         std::process::exit(1);
     });
     path.push("gopm/config/gopm-config.json");
@@ -43,7 +44,7 @@ static MACOS_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
 });
 static LINUX_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let mut path = dirs::home_dir().unwrap_or_else(|| {
-        println!("Failed to get the home directory");
+        println!("❌ Failed to get the home directory");
         std::process::exit(1);
     });
     path.push("gopm/config/gopm-config.json");
@@ -53,7 +54,7 @@ static LINUX_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
 fn main() {
     let matches = App::new("gopm")
         .version(VERSION)
-        .author("Your Name")
+        .author(AUTHOR)
         .about("A Go project manager and template generator")
         .subcommand(
             SubCommand::with_name("new")
@@ -69,7 +70,7 @@ fn main() {
         .subcommand(SubCommand::with_name("get-author").about("Get the saved author"))
         .subcommand(
             SubCommand::with_name("set-author")
-                .about("Save the author to the configuration")
+                .about("Save the author to the configuration\n\tExample: set-author Your Name")
                 .arg(Arg::with_name("author").required(true).index(1)),
         )
         .get_matches();
@@ -89,7 +90,7 @@ fn main() {
             let author = sub_matches.value_of("author").unwrap();
             save_author_to_config(author);
         }
-        _ => eprintln!("Invalid command. Use 'gopm --help' for usage information."),
+        _ => core::utils::logo(),
     }
 }
 
@@ -152,9 +153,9 @@ example-win:
                         )
                     }
                     _ => {
-    if entry == &cmd_app {
-        format!(
-            r#"package main
+                        if entry == &cmd_app {
+                            format!(
+                                r#"package main
 
 import "fmt"
 
@@ -162,16 +163,17 @@ func main() {{
     fmt.Println("Hello, {}!")
 }}
 "#,
-            app_name
-        )
-    } else {
-        "".to_string()
-    }
-}
+                                app_name
+                            )
+                        } else {
+                            "".to_string()
+                        }
+                    }
                 };
 
                 let mut file = File::create(&full_path).expect("Failed to create a file");
-                file.write_all(file_content.as_bytes()).expect("Failed to write to the file");
+                file.write_all(file_content.as_bytes())
+                    .expect("Failed to write to the file");
 
                 println!("Created file: {}", entry);
             }
@@ -192,11 +194,7 @@ fn init_go_app() {
 
     // Получите имя текущей директории и используйте его как имя вашего приложения
     let current_dir = env::current_dir().expect("Failed to get the current directory");
-    let app_name = current_dir
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
+    let app_name = current_dir.file_name().unwrap().to_str().unwrap();
 
     // Создайте структуру проекта и файлы
     let project_structure = core::create_project_structure(app_name);
@@ -233,9 +231,9 @@ fn init_go_app() {
                         get_saved_author()
                     ),
                     _ => {
-    if entry == &cmd_app {
-        format!(
-            r#"package main
+                        if entry == &cmd_app {
+                            format!(
+                                r#"package main
 
 import "fmt"
 
@@ -243,30 +241,53 @@ func main() {{
     fmt.Println("Hello, {}!")
 }}
 "#,
-            app_name
-        )
-    } else {
-        "".to_string()
-    }
-}
+                                app_name
+                            )
+                        } else {
+                            "".to_string()
+                        }
+                    }
                 };
 
                 let mut file = File::create(full_path).expect("Failed to create a file");
-                file.write_all(file_content.as_bytes()).expect("Failed to write to the file");
+                file.write_all(file_content.as_bytes())
+                    .expect("❌ Failed to write to the file");
 
-                println!("Created file: {}", entry);
+                println!("📄 Created file: {}", entry);
             }
             core::FileType::Directory => {
-                fs::create_dir_all(&full_path).expect("Failed to create a directory");
+                fs::create_dir_all(&full_path).expect("❌ Failed to create a directory");
             }
         }
     }
 }
 
-
 fn build_and_run_go_app() {
-    println!("Building and running the Go application... 🛠️🏃");
-}
+    println!("📦⚙️Building and running the Go application...");
+    let app_name = match read_project_file("gpm-config.json") {
+        Ok(name) => name,
+        Err(err) => {
+            eprintln!("Error: {}", err);
+            return;
+        }
+    };
+
+    let _build_cmd = std::process::Command::new("go")
+        .arg("build")
+        .arg("-o")
+        .arg(format!("bin/{}", app_name))
+        .arg(format!("cmd/{}/main.go", app_name))
+        .spawn();
+
+    println!("✅ Build successful at the `bin/{}`\n🏃 Runnung...\n\n", app_name);
+
+    let _run_cmd = std::process::Command::new(format!("./bin/{app_name}"))
+        .arg("build")
+        .arg("-o")
+        .arg(format!("bin/{}", app_name))
+        .arg(format!("cmd/{}/main.go", app_name))
+        .spawn();
+    }
 
 fn read_project_file(file: &str) -> Result<String, Box<dyn std::error::Error>> {
     let mut file = File::open(file)?;
@@ -279,7 +300,7 @@ fn read_project_file(file: &str) -> Result<String, Box<dyn std::error::Error>> {
 }
 
 fn build_go_app() {
-    println!("Building the Go application... 🛠️");
+    println!("📦 Building the Go application...");
 
     let app_name = match read_project_file("gpm-config.json") {
         Ok(name) => name,
@@ -293,6 +314,7 @@ fn build_go_app() {
         .arg("build")
         .arg("-o")
         .arg(format!("bin/{}", app_name))
+        .arg(format!("cmd/{}/main.go", app_name))
         .spawn();
 
     match build_cmd {
@@ -301,18 +323,18 @@ fn build_go_app() {
             match status {
                 Ok(exit_status) => {
                     if exit_status.success() {
-                        println!("Build successful.");
+                        println!("✅ Build successful at the `bin/{}`", app_name);
                     } else {
-                        eprintln!("Build failed.");
+                        eprintln!("❌ Build failed.");
                     }
                 }
                 Err(err) => {
-                    eprintln!("Failed to wait for build process: {}", err);
+                    eprintln!("⚠️ Failed to wait for build process: {}", err);
                 }
             }
         }
         Err(err) => {
-            eprintln!("Failed to start build process: {}", err);
+            eprintln!("⚠️ Failed to start build process: {}", err);
         }
     }
 }
@@ -370,7 +392,7 @@ fn save_author_to_config(author: &str) {
             dir.push("gopm");
             dir.push("config");
             dir
-        },
+        }
         None => {
             println!("Failed to determine home directory.");
             return;
@@ -429,7 +451,10 @@ fn parse_dependencies_from_go_mod(go_mod_path: &str) -> io::Result<Vec<String>> 
     for line in reader.lines() {
         let line = line?;
         if let Some(captures) = re_dependency.captures(&line) {
-            let dependency = captures.get(1).expect("Failed to parse dependency").as_str();
+            let dependency = captures
+                .get(1)
+                .expect("Failed to parse dependency")
+                .as_str();
             dependencies.push(dependency.to_string());
         }
     }

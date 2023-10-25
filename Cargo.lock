@@ -92,10 +92,11 @@ dependencies = [
 
 [[package]]
 name = "gopm"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "clap",
  "dirs",
+ "neofiglet",
  "once_cell",
  "regex",
  "serde",
@@ -129,6 +130,12 @@ name = "memchr"
 version = "2.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f665ee40bc4a3c5590afb1e9677db74a508659dfd71e126420da8274909a0167"
+
+[[package]]
+name = "neofiglet"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ad83e1c3cc692c78a3b39999c757f2e97de1a9cfef418a681f7965a12a6701a"
 
 [[package]]
 name = "once_cell"
