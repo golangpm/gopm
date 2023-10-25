@@ -11,7 +11,7 @@ pub fn create_project_structure(app_name: &str) -> Vec<(String, FileType)> {
     project_structure.push(("Scripts/install.sh".to_string(), FileType::File));
     project_structure.push(("bin".to_string(), FileType::Directory));
 
-    let cmd_go_file = format!("cmd/{}.go", app_name);
+    let cmd_go_file = format!("cmd/{}/main.go", app_name);
     project_structure.push((cmd_go_file, FileType::File));
 
     project_structure.push(("configs".to_string(), FileType::Directory));

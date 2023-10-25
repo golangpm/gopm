@@ -2,14 +2,16 @@ mod core;
 
 use clap::{App, Arg, SubCommand};
 use once_cell::sync::Lazy;
-use std::fs::{self, File};
-use std::path::{Path, PathBuf};
 use regex::Regex;
 use std::{
     io,
     env,
-    io::{BufReader, Write, BufRead},
+    fs::{self, File},
+    path::{Path, PathBuf},
+    io::{BufReader, Write, Read, BufRead},
 };
+
+extern crate serde_json;
 
 #[macro_use]
 extern crate serde_derive;
@@ -18,6 +20,9 @@ extern crate serde_derive;
 struct Config {
     author: Option<String>,
 }
+
+// CONSTS
+const VERSION: &str = "0.0.2";
 
 static WINDOWS_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let mut path = dirs::home_dir().unwrap_or_else(|| {
@@ -28,11 +33,6 @@ static WINDOWS_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
     path
 });
 
-// Local Consts
-/// DEBUG режим - Используется для отлажки программы:
-/// При активном DEBUG режиме все файлы создаются в директории `/out/...` - это сделано для того,
-/// чтобы не засорять основную директорию проекта. При билде программы для продакшн режима рекомендуется установить значение данной переменной в false
-const DEBUG: bool = true;
 static MACOS_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let mut path = dirs::home_dir().unwrap_or_else(|| {
         println!("Failed to get the home directory");
@@ -52,7 +52,7 @@ static LINUX_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
 
 fn main() {
     let matches = App::new("gopm")
-        .version("1.0")
+        .version(VERSION)
         .author("Your Name")
         .about("A Go project manager and template generator")
         .subcommand(
@@ -108,18 +108,15 @@ fn main() {
 ///];
 /// ```
 fn create_new_go_app(app_name: &str) {
+    // Создайте папку проекта с заданным именем
+    fs::create_dir(app_name).expect("Failed to create the project directory");
+
+    // Создайте структуру проекта и файлы
     let project_structure = core::create_project_structure(app_name);
 
-    let root_dir = if DEBUG {
-        app_name.to_string()
-    } else {
-        format!("out/{}", app_name)
-    };
-
-    fs::create_dir_all(&root_dir).expect("Failed to create the project directory");
-
     for (entry, file_type) in &project_structure {
-        let full_path = format!("{}/{}", root_dir, entry);
+        let full_path = format!("{}/{}", app_name, entry);
+        let cmd_app = format!("cmd/{app_name}/main.go");
 
         match file_type {
             core::FileType::File => {
@@ -127,15 +124,19 @@ fn create_new_go_app(app_name: &str) {
                     fs::create_dir_all(parent_dir).expect("Failed to create a directory");
                 }
 
-                // Check if the file is the Makefile
-                if entry == &"Makefile" {
-                    let makefile_content = format!(
-                        r#"# --- Variables ---
-appname = {app_name}
+                let file_content = match entry.as_str() {
+                    "Makefile" => {
+                        format!(
+                            r#"# --- Variables ---
+appname = {}
 
 # --- Actions ---
 Default:
-	go run cmd/$(appname).go
+	go run cmd/$(appname)/main.go
+start:
+	./bin/$(appname)
+build:
+	go build -o bin/$(appname) cmd/$(appname)/main.go
 
 # --- Build an example ---
 # Make "examples" folder (Unix)
@@ -144,31 +145,16 @@ example:
 # Make "examples" folder (Windows)
 example-win:
 	robocopy "." "examples" /xf ".gitignore" ".env" "README.md" /xd ".git" ".Ds_Store" ".vscode" ".idea" "assets" "test" "examples" /s
-	echo -e "examples" folder was builded!
+	echo -e "examples" folder was built!
 
-"#);
-
-                    // Create the Makefile and write the content
-                    let mut makefile =
-                        File::create(&full_path).expect("Failed to create the Makefile");
-                    makefile
-                        .write_all(makefile_content.as_bytes())
-                        .expect("Failed to write to the Makefile");
-                } else {
-                    // Create other files as usual
-                    File::create(&full_path).expect("Failed to create a file");
-                }
-            }
-            core::FileType::Directory => {
-                fs::create_dir_all(&full_path).expect("Failed to create a directory");
-            }
-        }
-    }
-
-    // Generate the content for the main Go source file
-    let app_file_path = format!("{}/cmd/{}.go", root_dir, app_name);
-    let app_source_code = format!(
-        r#"package main
+"#,
+                            app_name
+                        )
+                    }
+                    _ => {
+    if entry == &cmd_app {
+        format!(
+            r#"package main
 
 import "fmt"
 
@@ -176,69 +162,159 @@ func main() {{
     fmt.Println("Hello, {}!")
 }}
 "#,
-        app_name
-    );
-
-    // Write the generated content to the main Go source file
-    let mut app_file = File::create(&app_file_path)
-        .expect("Failed to create the main Go source file");
-    app_file
-        .write_all(app_source_code.as_bytes())
-        .expect("Failed to write to the main Go source file");
-
-    if let Err(err) = create_gpm_config_file(app_name, "go.mod") {
-        eprintln!("Error: {}", err);
+            app_name
+        )
+    } else {
+        "".to_string()
     }
 }
+                };
 
-// Init Go Ppp
-fn init_go_app() {
-    println!("Initializing the file structure of the current directory... 🚀");
-    // Получаем текущую рабочую директорию
-    let current_dir = env::current_dir().expect("Failed to get current directory");
+                let mut file = File::create(&full_path).expect("Failed to create a file");
+                file.write_all(file_content.as_bytes()).expect("Failed to write to the file");
 
-    // Извлекаем имя папки из полного пути
-    let app_name = current_dir
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
-
-    // Создаем проектную структуру
-    let project_structure = core::create_project_structure(app_name);
-
-    // Извлекаем имя папки из полного пути
-    let app_name = current_dir
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
-
-
-    for (path, file_type) in project_structure.iter() {
-        match file_type {
-            core::FileType::File => {
-                let file_path = current_dir.join(path);
-                core::create_file(file_path.to_str().unwrap());
-                println!("Created file: {}", path);
+                println!("Created file: {}", entry);
             }
             core::FileType::Directory => {
-                let dir_path = current_dir.join(path);
-                core::create_directory(dir_path.to_str().unwrap());
-                println!("Created directory: {}", path);
+                fs::create_dir_all(&full_path).expect("Failed to create a directory");
             }
         }
     }
 
-    println!("Go project initialized successfully!");
+    // Создайте файл gpm-config.json
+    create_gpm_config_file(app_name).expect("Failed to create gpm-config.json");
+
+    println!("Go project created successfully!");
 }
+
+fn init_go_app() {
+    println!("Initializing the file structure in the current directory... 🚀");
+
+    // Получите имя текущей директории и используйте его как имя вашего приложения
+    let current_dir = env::current_dir().expect("Failed to get the current directory");
+    let app_name = current_dir
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
+
+    // Создайте структуру проекта и файлы
+    let project_structure = core::create_project_structure(app_name);
+
+    for (entry, file_type) in &project_structure {
+        let full_path = current_dir.join(entry);
+        let cmd_app = format!("cmd/{app_name}/main.go");
+
+        match file_type {
+            core::FileType::File => {
+                if let Some(parent_dir) = full_path.parent() {
+                    fs::create_dir_all(parent_dir).expect("Failed to create a directory");
+                }
+
+                let file_content = match entry.as_str() {
+                    "Makefile" => {
+                        format!(
+                            "# --- Variables ---\nappname = {}\n\n# --- Actions ---\nDefault:\n\tgo run cmd/$(appname)/main.go\nstart:\n\t./bin/$(appname)\nbuild:\n\tgo build -o bin/$(appname) cmd/$(appname)/main.go\n\n# --- Build an example ---\n# Make \"examples\" folder (Unix)\nexample:\n\tcp -rv `ls -A | grep -vE \".git|.env|.gitignore|.vscode|.idea|.Ds_Store|README.md|examples|test\"` examples\n# Make \"examples\" folder (Windows)\nexample-win:\n\trobocopy \".\" \"examples\" /xf \".gitignore\" \".env\" \"README.md\" /xd \".git\" \".Ds_Store\" \".vscode\" \".idea\" \"assets\" \"test\" \"examples\" /s\necho -e \"examples\" folder was built!\n",
+                            app_name
+                        )
+                    }
+                    "gpm-config.json" => format!(
+                        r#"{{
+    "name": "{}",
+    "author": "{}",
+    "version": "0.0.0",
+    "scripts": {{
+        "run": "gopm run",
+        "start": "gopm start",
+        "build": "gopm build"
+    }}
+}}"#,
+                        app_name,
+                        get_saved_author()
+                    ),
+                    _ => {
+    if entry == &cmd_app {
+        format!(
+            r#"package main
+
+import "fmt"
+
+func main() {{
+    fmt.Println("Hello, {}!")
+}}
+"#,
+            app_name
+        )
+    } else {
+        "".to_string()
+    }
+}
+                };
+
+                let mut file = File::create(full_path).expect("Failed to create a file");
+                file.write_all(file_content.as_bytes()).expect("Failed to write to the file");
+
+                println!("Created file: {}", entry);
+            }
+            core::FileType::Directory => {
+                fs::create_dir_all(&full_path).expect("Failed to create a directory");
+            }
+        }
+    }
+}
+
 
 fn build_and_run_go_app() {
     println!("Building and running the Go application... 🛠️🏃");
 }
 
+fn read_project_file(file: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let mut file = File::open(file)?;
+    let mut data = String::new();
+    file.read_to_string(&mut data)?;
+
+    let json: serde_json::Value = serde_json::from_str(&data)?;
+    let res = json["name"].as_str().ok_or("Field 'name' not found")?;
+    Ok(res.to_string())
+}
+
 fn build_go_app() {
     println!("Building the Go application... 🛠️");
+
+    let app_name = match read_project_file("gpm-config.json") {
+        Ok(name) => name,
+        Err(err) => {
+            eprintln!("Error: {}", err);
+            return;
+        }
+    };
+
+    let build_cmd = std::process::Command::new("go")
+        .arg("build")
+        .arg("-o")
+        .arg(format!("bin/{}", app_name))
+        .spawn();
+
+    match build_cmd {
+        Ok(mut child) => {
+            let status = child.wait();
+            match status {
+                Ok(exit_status) => {
+                    if exit_status.success() {
+                        println!("Build successful.");
+                    } else {
+                        eprintln!("Build failed.");
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Failed to wait for build process: {}", err);
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("Failed to start build process: {}", err);
+        }
+    }
 }
 
 fn get_saved_author() -> String {
@@ -339,7 +415,8 @@ fn save_author_to_config(author: &str) {
 
 // Project .json file
 
-// Parse projec dependencies
+// Parse project dependencies
+#[allow(dead_code)]
 fn parse_dependencies_from_go_mod(go_mod_path: &str) -> io::Result<Vec<String>> {
     let mut dependencies = Vec::new();
 
@@ -360,11 +437,9 @@ fn parse_dependencies_from_go_mod(go_mod_path: &str) -> io::Result<Vec<String>> 
     Ok(dependencies)
 }
 
-
 // Create local GOPM project file
-fn create_gpm_config_file(project_name: &str, go_mod_path: &str) -> io::Result<()> {
+fn create_gpm_config_file(project_name: &str) -> io::Result<()> {
     let author = get_saved_author();
-    let dependencies = parse_dependencies_from_go_mod(go_mod_path)?;
 
     let mut file_content = format!(
         r#"{{
@@ -375,17 +450,11 @@ fn create_gpm_config_file(project_name: &str, go_mod_path: &str) -> io::Result<(
         "run": "gopm run",
         "start": "gopm start",
         "build": "gopm build"
-    }},
-    "dependencies": {{"#,
+    }}"#,
         project_name, author
     );
 
-    for dependency in dependencies {
-        file_content.push_str(format!(r#"
-        "{}": "latest","#, dependency).as_str());
-    }
-
-    file_content.push_str("\n    }\n}");
+    file_content.push_str("\n}");
 
     let file_path = format!("{}/gpm-config.json", project_name);
 
