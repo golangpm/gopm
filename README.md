@@ -47,7 +47,6 @@ SUBCOMMANDS:
     run           Build and run the Go application
     set-author    Save the author to the configuration
                         Example: set-author Your Name
-```
 
 ## Documentation
 
