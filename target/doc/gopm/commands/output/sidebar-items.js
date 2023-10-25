@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["init_go_app_out","new_go_app_out"]};

@@ -1,5 +1,3 @@
-
-
 use std::fs::{self, File};
 #[allow(dead_code)]
 pub fn create_directory(path: &str) {

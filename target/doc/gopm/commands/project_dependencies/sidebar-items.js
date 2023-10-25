@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["parse_dependencies_from_go_mod"]};

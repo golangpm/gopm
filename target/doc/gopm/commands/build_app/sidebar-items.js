@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["build_and_run_go_app","build_go_app"]};

@@ -1,4 +1,7 @@
-!/target/docs
+#Builds dir
 /target/*
+# Add documentation by rustdoc
+!target/doc
+# IDE & System files
 .idea/
 .DS_Store
