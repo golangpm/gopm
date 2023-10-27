@@ -47,6 +47,7 @@ SUBCOMMANDS:
     run           Build and run the Go application
     set-author    Save the author to the configuration
                         Example: set-author Your Name
+```
 
 ## Documentation
 
@@ -56,4 +57,5 @@ To load project documentation, please run this commands:
 cargo rustdoc
 cargo rustdoc --open
 ```
+
 The Documentation will be open at the yous browser window
